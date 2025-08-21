@@ -36,5 +36,8 @@ int main()  {
     cout << "Nome: " << userinfo.nome << endl;
     cout << "Endereço: " << userinfo.endereco << endl;
     cout << "Idade: " << userinfo.idade << endl;
+
 return 0;
+}
+
 
