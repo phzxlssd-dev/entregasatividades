@@ -1,1 +1,148 @@
+from abc import ABC, abstractmethod
+from collections import deque
+import matplotlib.pyplot as plt
+
+class Sensor(ABC):
+    def __init__(self, offset: float = 0.0):
+        self._offset = offset
+
+    @abstractmethod
+    def read(self) -> float:
+        """Retorna temperatura atual (corrigida com offset)."""
+        pass
+
+    @property
+    def offset(self) -> float:
+        return self._offset
+
+    @offset.setter
+    def offset(self, off: float):
+        self._offset = off
+
+
+class SimpleSensor(Sensor):
+    def __init__(self, temp_inicial: float = 25.0, offset: float = 0.0):
+        super().__init__(offset)
+        self._temperatura = temp_inicial
+
+    def read(self) -> float:
+        return self._temperatura + self._offset
+
+    def atualizar(self, delta: float):
+        self._temperatura += delta
+
+
+class MovingAverageSensor(Sensor):
+    def __init__(self, temp_inicial: float = 25.0, janela: int = 5, offset: float = 0.0):
+        super().__init__(offset)
+        self._janela = deque([temp_inicial] * janela, maxlen=janela)
+
+    def read(self) -> float:
+        return (sum(self._janela) / len(self._janela)) + self._offset
+
+    def atualizar(self, delta: float):
+        nova_temp = self._janela[-1] + delta
+        self._janela.append(nova_temp)
+
+
+class Actuator(ABC):
+    def __init__(self):
+        self._on = False
+
+    def ligar(self): self._on = True
+    def desligar(self): self._on = False
+    def is_on(self): return self._on
+
+    @abstractmethod
+    def efeito(self) -> float:
+        """Retorna o efeito térmico do atuador (positivo ou negativo)."""
+        pass
+
+
+class Cooler(Actuator):
+    def __init__(self, taxa_resfriamento: float = 0.4):
+        super().__init__()
+        self._taxa = taxa_resfriamento
+
+    def efeito(self) -> float:
+        return -self._taxa if self._on else 0.0
+
+
+class Heater(Actuator):
+    def __init__(self, taxa_aquecimento: float = 0.3):
+        super().__init__()
+        self._taxa = taxa_aquecimento
+
+    def efeito(self) -> float:
+        return self._taxa if self._on else 0.0
+
+class Controller:
+    def __init__(self, min_c: float = 24.0, max_c: float = 26.0):
+        self.min_c = min_c
+        self.max_c = max_c
+
+    def controlar(self, sensor: Sensor, cooler: Actuator, heater: Actuator):
+        temp = sensor.read()
+        if temp < self.min_c:
+            heater.ligar()
+            cooler.desligar()
+        elif temp > self.max_c:
+            cooler.ligar()
+            heater.desligar()
+        else:
+            cooler.desligar()
+            heater.desligar()
+
+
+class Simulacao:
+    def __init__(self, sensor: Sensor, cooler: Actuator, heater: Actuator, controller: Controller):
+        self.sensor = sensor
+        self.cooler = cooler
+        self.heater = heater
+        self.controller = controller
+        self.temperaturas = []
+        self.estado_cooler = []
+        self.estado_heater = []
+
+    def rodar(self, segundos: int = 100):
+        for _ in range(segundos):
+            self.controller.controlar(self.sensor, self.cooler, self.heater)
+            delta = self.cooler.efeito() + self.heater.efeito()
+            self.sensor.atualizar(delta)
+
+            self.temperaturas.append(self.sensor.read())
+            self.estado_cooler.append(1 if self.cooler.is_on() else 0)
+            self.estado_heater.append(1 if self.heater.is_on() else 0)
+
+    def plotar(self):
+        plt.figure(figsize=(10, 6))
+        plt.plot(self.temperaturas, label="Temperatura (°C)", linewidth=2)
+        plt.axhline(self.controller.min_c, color='red', linestyle='--', label="Limite inferior")
+        plt.axhline(self.controller.max_c, color='red', linestyle='--', label="Limite superior")
+        plt.fill_between(range(len(self.temperaturas)), self.controller.min_c, self.controller.max_c, color='yellow', alpha=0.1)
+
+        plt.step(range(len(self.estado_cooler)), [22 + 2 * x for x in self.estado_cooler],
+                 where='post', label="Cooler ON", color='blue', alpha=0.6)
+        plt.step(range(len(self.estado_heater)), [28 + 2 * x for x in self.estado_heater],
+                 where='post', label="Heater ON", color='orange', alpha=0.6)
+
+        plt.title("Controle Bidirecional com Histerese (Cooler + Heater)")
+        plt.xlabel("Tempo (s)")
+        plt.ylabel("Temperatura (°C)")
+        plt.legend()
+        plt.grid(True)
+        plt.show()
+
+if __name__ == "__main__":
+    # 🔄 Troque o sensor para testar polimorfismo:
+    # sensor = SimpleSensor(temp_inicial=25.0)
+    sensor = MovingAverageSensor(temp_inicial=25.0, janela=5)
+
+    cooler = Cooler(taxa_resfriamento=0.4)
+    heater = Heater(taxa_aquecimento=0.3)
+    controller = Controller(min_c=24.0, max_c=26.0)
+
+    sim = Simulacao(sensor, cooler, heater, controller)
+    sim.rodar(segundos=120)
+    sim.plotar()
 
